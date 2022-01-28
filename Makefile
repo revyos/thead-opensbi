@@ -106,6 +106,9 @@ ifndef PLATFORM_RISCV_XLEN
   endif
 endif
 
+# Check whether the assembler and the compiler support the Zicsr and Zifencei extensions
+CC_SUPPORT_ZICSR_ZIFENCEI := $(shell $(CC) $(CLANG_TARGET) $(RELAX_FLAG) -nostdlib -march=rv$(OPENSBI_CC_XLEN)imafd_zicsr_zifencei -x c /dev/null -o /dev/null 2>&1 | grep "zicsr\|zifencei" > /dev/null && echo n || echo y)
+
 # Setup list of objects.mk files
 ifdef PLATFORM
 platform-object-mks=$(shell if [ -d $(platform_src_dir)/ ]; then find $(platform_src_dir) -iname "objects.mk" | sort -r; fi)
@@ -157,7 +160,11 @@ ifndef PLATFORM_RISCV_ABI
 endif
 ifndef PLATFORM_RISCV_ISA
   ifneq ($(PLATFORM_RISCV_TOOLCHAIN_DEFAULT), 1)
-    PLATFORM_RISCV_ISA = rv$(PLATFORM_RISCV_XLEN)imafdc
+    ifeq ($(CC_SUPPORT_ZICSR_ZIFENCEI), y)
+      PLATFORM_RISCV_ISA = rv$(PLATFORM_RISCV_XLEN)imafdc_zicsr_zifencei
+    else
+      PLATFORM_RISCV_ISA = rv$(PLATFORM_RISCV_XLEN)imafdc
+    endif
   else
     PLATFORM_RISCV_ISA = $(OPENSBI_CC_ISA)
   endif
