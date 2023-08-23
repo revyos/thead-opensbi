@@ -7,6 +7,7 @@
  *   Anup Patel <anup.patel@wdc.com>
  */
 
+#include <libfdt.h>
 #include <sbi/sbi_error.h>
 #include <sbi_utils/fdt/fdt_helper.h>
 #include <sbi_utils/timer/fdt_timer.h>
@@ -33,12 +34,16 @@ static int timer_clint_cold_init(void *fdt, int nodeoff,
 	if (rc)
 		return rc;
 
+	if (fdt_node_check_compatible(fdt, nodeoff, "thead,c900-clint") >= 0)
+		ct->has_64bit_mmio = FALSE;
+
 	return clint_cold_timer_init(ct, ctmaster);
 }
 
 static const struct fdt_match timer_clint_match[] = {
 	{ .compatible = "riscv,clint0" },
 	{ .compatible = "sifive,clint0" },
+	{ .compatible = "thead,c900-clint" },
 	{ },
 };
 
