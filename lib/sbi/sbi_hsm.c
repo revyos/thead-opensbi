@@ -185,8 +185,7 @@ int sbi_hsm_init(struct sbi_scratch *scratch, u32 hartid, bool cold_boot)
 	struct sbi_hsm_data *hdata;
 
 	if (cold_boot) {
-		hart_data_offset = sbi_scratch_alloc_offset(sizeof(*hdata),
-							    "HART_DATA");
+		hart_data_offset = sbi_scratch_alloc_offset(sizeof(*hdata));
 		if (!hart_data_offset)
 			return SBI_ENOMEM;
 
@@ -359,12 +358,6 @@ static int __sbi_hsm_suspend_non_ret_default(struct sbi_scratch *scratch,
 {
 	void (*jump_warmboot)(void) = (void (*)(void))scratch->warmboot_addr;
 
-	/*
-	 * Save some of the M-mode CSRs which should be restored after
-	 * resuming from suspend state
-	 */
-	__sbi_hsm_suspend_non_ret_save(scratch);
-
 	/* Wait for interrupt */
 	wfi();
 
@@ -463,6 +456,13 @@ int sbi_hsm_hart_suspend(struct sbi_scratch *scratch, u32 suspend_type,
 
 	/* Save the suspend type */
 	hdata->suspend_type = suspend_type;
+
+	/*
+	 * Save context which will be restored after resuming from
+	 * non-retentive suspend.
+	 */
+	if (suspend_type & SBI_HSM_SUSP_NON_RET_BIT)
+		__sbi_hsm_suspend_non_ret_save(scratch);
 
 	/* Try platform specific suspend */
 	ret = hsm_device_hart_suspend(suspend_type, scratch->warmboot_addr);

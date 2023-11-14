@@ -162,6 +162,19 @@ void csr_write_num(int csr_num, unsigned long val);
 		__asm__ __volatile__("ebreak" ::: "memory"); \
 	} while (0)
 
+
+#define dcache_call()                                             \
+	do {                                              \
+		asm volatile(".long 0x0010000b\n"); \
+	} while (0)
+
+#define dcache_ciall()                                             \
+	do {                                              \
+		asm volatile(".long 0x0030000b\n"); \
+	} while (0)
+
+#define sync_is()   asm volatile (".long 0x01b0000b")
+
 /* Get current HART id */
 #define current_hartid()	((unsigned int)csr_read(CSR_MHARTID))
 
