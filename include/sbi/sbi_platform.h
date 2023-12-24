@@ -45,6 +45,10 @@
 #include <sbi/sbi_scratch.h>
 #include <sbi/sbi_version.h>
 
+#define SBI_EXT_VENDOR_SMC      (SBI_EXT_VENDOR_START + 0)
+#define SBI_EXT_VENDOR_PMU      (SBI_EXT_VENDOR_START + 1)
+#define SBI_EXT_VENDOR_PMP      (SBI_EXT_VENDOR_START + 2)
+
 struct sbi_domain_memregion;
 struct sbi_trap_info;
 struct sbi_trap_regs;

@@ -21,6 +21,21 @@
 #include <sbi_utils/timer/fdt_timer.h>
 #include <sbi_utils/ipi/fdt_ipi.h>
 #include <sbi_utils/reset/fdt_reset.h>
+#include <sbi/sbi_console.h>
+#include <sbi/riscv_io.h>
+
+#define PMP_BASE_ADDR			0xffdc020000UL
+#define PMP_SIZE_PER_CORE		0x4000UL
+#define TCM0_START_ADDR			0xffe0180000UL
+#define TCM0_END_ADDR			0xffe01c0000UL
+#define TCM1_START_ADDR			0xffe01c0000UL
+#define TCM1_END_ADDR			0xffe0200000UL
+#define RESERVED_START_ADDR		0xffe0200000UL
+#define RESERVED_END_ADDR		0xffe1000000UL
+#define PMP_ENTRY_BASE_ADDR		0x100UL
+#define PMP_ENTRY_START_ADDR(n)	(PMP_BASE_ADDR + PMP_ENTRY_BASE_ADDR + (n * 8))
+#define PMP_ENTRY_END_ADDR(n)	(PMP_ENTRY_START_ADDR(n) + 4)
+#define PMP_ENTRY_CFG_ADDR(n)	(PMP_BASE_ADDR + ((n / 4) * 4))
 
 extern const struct platform_override sifive_fu540;
 extern const struct platform_override light;
@@ -330,13 +345,108 @@ static void sbi_thead_pmu_set(unsigned long type, unsigned long idx, unsigned lo
 	}
 }
 
+static void sbi_thead_reserved_pmp_set(void)
+{
+	unsigned int num, reg_val;
+
+	for (num = 0; num < 4; num++) {
+		/*	pmp entry 28 for reserved memory	*/
+		writel(RESERVED_START_ADDR >> 12, (void *)(PMP_ENTRY_START_ADDR(28) + num*PMP_SIZE_PER_CORE));
+		writel(RESERVED_END_ADDR >> 12, (void *)(PMP_ENTRY_END_ADDR(28) + num*PMP_SIZE_PER_CORE));
+
+		/*	pmp entry 28 config	*/
+		reg_val = readl((void *)(PMP_ENTRY_CFG_ADDR(28) + num*PMP_SIZE_PER_CORE));
+		reg_val = (reg_val & 0xffffff00) | 0x040;
+		writel(reg_val, (void *)((PMP_ENTRY_CFG_ADDR(28) + num*PMP_SIZE_PER_CORE)));
+	}
+
+	sync_is();
+}
+
+static void sbi_thead_tcm0_pmp_set(unsigned long auth)
+{
+	sbi_printf("%s: auth:%lx \n", __func__, auth);
+	unsigned int num, reg_val;
+
+	reg_val = readl((void *)PMP_ENTRY_START_ADDR(26));
+
+	if (reg_val != TCM0_START_ADDR >> 12)
+		for(num = 0; num < 4; num++) {
+			/*	pmp entry 26 for dsp tcm0	*/
+			writel(TCM0_START_ADDR >> 12, (void *)(PMP_ENTRY_START_ADDR(26) + num*PMP_SIZE_PER_CORE));
+			writel(TCM0_END_ADDR >> 12, (void *)(PMP_ENTRY_END_ADDR(26) + num*PMP_SIZE_PER_CORE));
+		}
+
+	for(num = 0; num < 4; num++) {
+		/*	pmp entry 26 config	*/
+		reg_val = readl((void *)(PMP_ENTRY_CFG_ADDR(26) + num*PMP_SIZE_PER_CORE));
+		reg_val = (reg_val & 0xff00ffff) | (auth << 16);
+		writel(reg_val, (void *)(PMP_ENTRY_CFG_ADDR(26) + num*PMP_SIZE_PER_CORE));
+	}
+
+	sync_is();
+}
+
+static void sbi_thead_tcm1_pmp_set(unsigned long auth)
+{
+	sbi_printf("%s: auth:%lx \n", __func__, auth);
+	unsigned int num, reg_val;
+
+	reg_val = readl((void *)PMP_ENTRY_START_ADDR(27));
+	if (reg_val != TCM1_START_ADDR >> 12)
+		for (num = 0; num < 4; num++) {
+			/*	pmp entry 27 for dsp tcm1	*/
+			writel(TCM1_START_ADDR >> 12, (void *)(PMP_ENTRY_START_ADDR(27) + num*PMP_SIZE_PER_CORE));
+			writel(TCM1_END_ADDR >> 12, (void *)(PMP_ENTRY_END_ADDR(27) + num*PMP_SIZE_PER_CORE));
+		}
+
+	for (num = 0; num < 4; num++) {
+		/*	pmp entry 27 config	*/
+		reg_val = readl((void *)(PMP_ENTRY_CFG_ADDR(27) + num*PMP_SIZE_PER_CORE));
+		reg_val = (reg_val & 0x00ffffff) | (auth << 24);
+		writel(reg_val, (void *)(PMP_ENTRY_CFG_ADDR(27) + num*PMP_SIZE_PER_CORE));
+	}
+
+	sync_is();
+}
+
+static void sbi_thead_pmp_set(unsigned long idx, unsigned long auth)
+{
+	unsigned int reg_val;
+
+	if (idx !=0 && idx != 1)
+		return;
+
+	/*	read pmp entry 28	*/
+	reg_val = readl((void *)PMP_ENTRY_START_ADDR(28));
+
+	if (reg_val != RESERVED_START_ADDR >> 12)
+		sbi_thead_reserved_pmp_set();
+
+	switch (idx) {
+	case 0:
+		sbi_thead_tcm0_pmp_set(auth);
+		break;
+	case 1:
+		sbi_thead_tcm1_pmp_set(auth);
+		break;
+	default:
+		break;
+	}
+}
+
 static int thead_vendor_ext_provider(long extid, long funcid,
 	const struct sbi_trap_regs *regs, unsigned long *out_value,
 	struct sbi_trap_info *out_trap)
 {
+	sbi_printf("%s: extid:%lx funcid:%lx \n", __func__,
+				   extid, funcid);
 	switch (extid) {
-	case 0x09000001:
+	case SBI_EXT_VENDOR_PMU:
 		sbi_thead_pmu_set(regs->a0, regs->a1, regs->a2);
+		break;
+	case SBI_EXT_VENDOR_PMP:
+		sbi_thead_pmp_set(funcid, regs->a0);
 		break;
 	default:
 		while(1);
